@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LexiConlang - 人工语言云端词典</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+    body { font-family: 'Inter', 'Noto Sans SC', sans-serif; }
+    .ipa-font { font-family: 'Lucida Sans Unicode', 'Arial Unicode MS', sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- 顶部导航栏 -->
+  <header class="bg-indigo-950 text-white shadow-md sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+      <div class="flex items-center gap-3">
+        <span class="bg-indigo-600 p-2 rounded-lg font-bold text-lg tracking-wider">LC</span>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">LexiConlang</h1>
+          <p class="text-xs text-indigo-300">人工语言词典与造词工作台</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 text-sm">
+        <!-- 同步状态指示器 -->
+        <span id="syncStatus" class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-900 text-indigo-200 text-xs">
+          <span id="syncDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+          <span id="syncText">本地存储模式</span>
+        </span>
+
+        <button onclick="openCloudModal()" class="bg-indigo-700 hover:bg-indigo-600 px-3 py-1.5 rounded-lg transition text-xs font-medium">
+          ☁️ 配置云端同步
+        </button>
+        <button onclick="exportJSON()" class="bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition text-xs font-medium">
+          ⬇️ 导出备份
+        </button>
+        <label class="bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition text-xs font-medium cursor-pointer">
+          ⬆️ 导入
+          <input type="file" id="importFile" accept=".json" class="hidden" onchange="importJSON(event)">
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主体内容区 -->
+  <main class="max-w-7xl mx-auto w-full px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+    
+    <!-- 左侧：造词录入与编辑表单 (占4列) -->
+    <section class="lg:col-span-4">
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 sticky top-20">
+        <div class="flex justify-between items-center mb-4">
+          <h2 id="formTitle" class="font-bold text-base text-slate-900">➕ 新增造词词条</h2>
+          <button id="cancelEditBtn" onclick="resetForm()" class="hidden text-xs text-slate-500 hover:text-red-600">取消编辑</button>
+        </div>
+
+        <form id="wordForm" onsubmit="handleSaveWord(event)" class="space-y-3.5 text-sm">
+          <input type="hidden" id="wordId">
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">造词拼写 *</label>
+              <input type="text" id="wordInput" required placeholder="例如: aeloria"
+                class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">国际音标 (IPA)</label>
+              <input type="text" id="ipaInput" placeholder="例如: /ae.ˈlo.ri.a/"
+                class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none ipa-font">
+            </div>
+          </div>
+
+          <!-- 快捷 IPA 符号栏 -->
+          <div class="bg-slate-100 p-2 rounded-lg">
+            <span class="text-[11px] text-slate-500 block mb-1">点击插入常用音标符号：</span>
+            <div class="flex flex-wrap gap-1" id="ipaBar"></div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div class="col-span-1">
+              <label class="block text-xs font-semibold text-slate-600 mb-1">词性 *</label>
+              <select id="posInput" class="w-full px-2.5 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+                <option value="n.">n. 名词</option>
+                <option value="v.">v. 动词</option>
+                <option value="adj.">adj. 形容词</option>
+                <option value="adv.">adv. 副词</option>
+                <option value="pron.">pron. 代词</option>
+                <option value="prep.">prep. 介词</option>
+                <option value="conj.">conj. 连词</option>
+                <option value="affix">affix 词缀</option>
+                <option value="root">root 词根</option>
+              </select>
+            </div>
+            <div class="col-span-2">
+              <label class="block text-xs font-semibold text-slate-600 mb-1">对应翻译 / 核心词义 *</label>
+              <input type="text" id="transInput" required placeholder="例如: 永恒的晨光；希望"
+                class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">词源与构词解析 (Etymology)</label>
+            <input type="text" id="etymInput" placeholder="例如: ael- (光) + -oria (抽象名词后缀)"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">例句与语法标注 (Examples & Gloss)</label>
+            <textarea id="exampleInput" rows="2" placeholder="Aeloria vana.&#10;晨光-NOM 降临-PAST (晨光降临了。)"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">分类标签（用逗号分隔）</label>
+            <input type="text" id="tagsInput" placeholder="例如: 自然, 神话, 高频词"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+
+          <button type="submit" id="submitBtn"
+            class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg shadow transition">
+            保存至词典
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- 右侧：搜索过滤与词条列表 (占8列) -->
+    <section class="lg:col-span-8 flex flex-col gap-4">
+      <!-- 检索与统计栏 -->
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap gap-3 items-center justify-between">
+        <div class="flex-1 min-w-[220px] relative">
+          <input type="text" id="searchInput" oninput="renderDictionary()" placeholder="搜索造词、中文释义、词根或标签..."
+            class="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          <span class="absolute left-3 top-2.5 text-slate-400">🔍</span>
+        </div>
+
+        <div class="flex items-center gap-2 text-sm">
+          <select id="filterPos" onchange="renderDictionary()" class="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm">
+            <option value="">全部词性</option>
+            <option value="n.">n. 名词</option>
+            <option value="v.">v. 动词</option>
+            <option value="adj.">adj. 形容词</option>
+            <option value="adv.">adv. 副词</option>
+            <option value="pron.">pron. 代词</option>
+            <option value="prep.">prep. 介词</option>
+            <option value="affix">affix 词缀</option>
+            <option value="root">root 词根</option>
+          </select>
+
+          <select id="sortOrder" onchange="renderDictionary()" class="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm">
+            <option value="alpha">按字母 A-Z</option>
+            <option value="newest">按最新添加</option>
+          </select>
+
+          <span id="wordCount" class="bg-indigo-50 text-indigo-700 px-3 py-2 rounded-lg font-semibold text-xs whitespace-nowrap">
+            共 0 词
+          </span>
+        </div>
+      </div>
+
+      <!-- 词条卡片流 -->
+      <div id="dictionaryList" class="space-y-3"></div>
+    </section>
+  </main>
+
+  <!-- 云端配置弹窗 -->
+  <div id="cloudModal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl max-w-lg w-full p-6 shadow-xl space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-lg">☁️ 配置 Firebase 实时云端同步</h3>
+        <button onclick="closeCloudModal()" class="text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <p class="text-xs text-slate-600 leading-relaxed">
+        填入你的 Firebase 项目配置 JSON（在 Firebase 控制台 -> 项目设置 -> 常规 -> 你的应用中获取）。连接后，所有词条将实时保存在 Firestore 云端集合中。
+      </p>
+      <textarea id="firebaseConfigInput" rows="7" placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "your-app.firebaseapp.com",
+  "projectId": "your-app",
+  "storageBucket": "your-app.appspot.com",
+  "messagingSenderId": "123456",
+  "appId": "1:123456:web:abcdef"
+}' class="w-full p-3 border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
+      <div class="flex justify-end gap-2">
+        <button onclick="disconnectCloud()" class="px-4 py-2 text-xs text-red-600 hover:bg-red-50 rounded-lg">断开云端</button>
+        <button onclick="connectFirebase()" class="px-4 py-2 text-xs bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">保存并实时连接</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (模块化按需加载) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    // 全局状态
+    let words = [];
+    let db = null;
+    let unsubscribeSnapshot = null;
+    const STORAGE_KEY = 'lexiconlang_words_v1';
+    const FB_CONFIG_KEY = 'lexiconlang_fb_config';
+
+    // 初始化常用 IPA 按钮
+    const ipaSymbols = ['ˈ', 'ˌ', 'ː', 'ə', 'ɛ', 'ɪ', 'ɔ', 'ʊ', 'æ', 'ɑ', 'ʃ', 'ʒ', 'θ', 'ð', 'ŋ', 'ɲ', 'ɾ', 'ʀ', 'x', 'ɣ', 'ʔ', 'ts', 'tʃ'];
+    const ipaBar = document.getElementById('ipaBar');
+    ipaSymbols.forEach(sym => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = sym;
+      btn.className = 'px-2 py-0.5 bg-white border border-slate-300 rounded text-xs hover:bg-indigo-50 hover:border-indigo-400 ipa-font transition';
+      btn.onclick = () => {
+        const input = document.getElementById('ipaInput');
+        const start = input.selectionStart;
+        const end = input.selectionEnd;
+        input.value = input.value.substring(0, start) + sym + input.value.substring(end);
+        input.focus();
+        input.selectionStart = input.selectionEnd = start + sym.length;
+      };
+      ipaBar.appendChild(btn);
+    });
+
+    // 加载本地初始数据
+    function loadLocalData() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        words = JSON.parse(raw);
+      } else {
+        // 初始示例词条
+        words = [
+          {
+            id: 'demo-1',
+            word: 'aeloria',
+            ipa: '/ae.ˈlo.ri.a/',
+            pos: 'n.',
+            translation: '晨曦，破晓的第一道光',
+            etymology: '源自古词根 *ael- (光辉) + -oria (时间/状态名词后缀)',
+            examples: 'Aeloria silarin oron.\n晨曦-NOM 照亮-PRES 山脉-ACC (晨曦照亮群山。)',
+            tags: ['自然', '光影', '诗意'],
+            updatedAt: Date.now()
+          }
+        ];
+        saveLocalData();
+      }
+      renderDictionary();
+    }
+
+    function saveLocalData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
+    }
+
+    // 渲染词典列表
+    window.renderDictionary = function() {
+      const query = document.getElementById('searchInput').value.trim().toLowerCase();
+      const posFilter = document.getElementById('filterPos').value;
+      const sortOrder = document.getElementById('sortOrder').value;
+
+      let filtered = words.filter(item => {
+        const matchPos = !posFilter || item.pos === posFilter;
+        const matchQuery = !query ||
+          item.word.toLowerCase().includes(query) ||
+          item.translation.toLowerCase().includes(query) ||
+          (item.etymology && item.etymology.toLowerCase().includes(query)) ||
+          (item.tags && item.tags.some(t => t.toLowerCase().includes(query)));
+        return matchPos && matchQuery;
+      });
+
+      filtered.sort((a, b) => {
+        if (sortOrder === 'alpha') return a.word.localeCompare(b.word);
+        return (b.updatedAt || 0) - (a.updatedAt || 0);
+      });
+
+      document.getElementById('wordCount').textContent = `共 ${filtered.length} 词`;
+      const container = document.getElementById('dictionaryList');
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white p-12 rounded-xl border border-dashed border-slate-300 text-center text-slate-400">
+            暂无匹配的造词词条，请在左侧添加你的第一个词汇。
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => `
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 hover:border-indigo-300 transition group">
+          <div class="flex justify-between items-start gap-2">
+            <div class="flex items-baseline gap-2.5 flex-wrap">
+              <h3 class="text-lg font-bold text-indigo-950">${escapeHTML(item.word)}</h3>
+              ${item.ipa ? `<span class="text-sm text-slate-500 ipa-font">${escapeHTML(item.ipa)}</span>` : ''}
+              <span class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">${escapeHTML(item.pos)}</span>
+            </div>
+            <div class="flex items-center gap-2 opacity-80 group-hover:opacity-100">
+              <button onclick="editWord('${item.id}')" class="text-xs text-slate-500 hover:text-indigo-600 px-2 py-1 rounded hover:bg-slate-100">编辑</button>
+              <button onclick="deleteWord('${item.id}')" class="text-xs text-slate-500 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50">删除</button>
+            </div>
+          </div>
+
+          <p class="mt-1.5 text-slate-800 font-medium">${escapeHTML(item.translation)}</p>
+
+          ${item.etymology ? `
+            <div class="mt-2 text-xs text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+              <span class="font-semibold text-slate-600">词源：</span>${escapeHTML(item.etymology)}
+            </div>` : ''}
+
+          ${item.examples ? `
+            <pre class="mt-2 text-xs text-slate-600 pl-3 border-l-2 border-indigo-300 whitespace-pre-wrap font-sans italic">${escapeHTML(item.examples)}</pre>` : ''}
+
+          ${item.tags && item.tags.length ? `
+            <div class="mt-3 flex flex-wrap gap-1.5">
+              ${item.tags.map(t => `<span class="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">#${escapeHTML(t)}</span>`).join('')}
+            </div>` : ''}
+        </div>
+      `).join('');
+    };
+
+    // 保存或更新词条
+    window.handleSaveWord = async function(e) {
+      e.preventDefault();
+      const id = document.getElementById('wordId').value || ('w_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6));
+      const entry = {
+        id,
+        word: document.getElementById('wordInput').value.trim(),
+        ipa: document.getElementById('ipaInput').value.trim(),
+        pos: document.getElementById('posInput').value,
+        translation: document.getElementById('transInput').value.trim(),
+        etymology: document.getElementById('etymInput').value.trim(),
+        examples: document.getElementById('exampleInput').value.trim(),
+        tags: document.getElementById('tagsInput').value.split(/[,，]/).map(s => s.trim()).filter(Boolean),
+        updatedAt: Date.now()
+      };
+
+      const idx = words.findIndex(w => w.id === id);
+      if (idx >= 0) words[idx] = entry;
+      else words.push(entry);
+
+      saveLocalData();
+      renderDictionary();
+      resetForm();
+
+      if (db) {
+        try {
+          await setDoc(doc(db, "conlang_words", id), entry);
+        } catch (err) {
+          alert("云端同步写入失败，请检查 Firebase 权限规则: " + err.message);
+        }
+      }
+    };
+
+    window.editWord = function(id) {
+      const item = words.find(w => w.id === id);
+      if (!item) return;
+      document.getElementById('wordId').value = item.id;
+      document.getElementById('wordInput').value = item.word;
+      document.getElementById('ipaInput').value = item.ipa || '';
+      document.getElementById('posInput').value = item.pos;
+      document.getElementById('transInput').value = item.translation;
+      document.getElementById('etymInput').value = item.etymology || '';
+      document.getElementById('exampleInput').value = item.examples || '';
+      document.getElementById('tagsInput').value = (item.tags || []).join(', ');
+
+      document.getElementById('formTitle').textContent = '✏️ 编辑词条';
+      document.getElementById('submitBtn').textContent = '更新词条';
+      document.getElementById('cancelEditBtn').classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    window.resetForm = function() {
+      document.getElementById('wordForm').reset();
+      document.getElementById('wordId').value = '';
+      document.getElementById('formTitle').textContent = '➕ 新增造词词条';
+      document.getElementById('submitBtn').textContent = '保存至词典';
+      document.getElementById('cancelEditBtn').classList.add('hidden');
+    };
+
+    window.deleteWord = async function(id) {
+      if (!confirm('确定要删除这个造词吗？')) return;
+      words = words.filter(w => w.id !== id);
+      saveLocalData();
+      renderDictionary();
+      if (db) {
+        try {
+          await deleteDoc(doc(db, "conlang_words", id));
+        } catch (err) {
+          alert("云端删除失败: " + err.message);
+        }
+      }
+    };
+
+    // 云端同步连接逻辑
+    window.openCloudModal = () => {
+      const saved = localStorage.getItem(FB_CONFIG_KEY);
+      if (saved) document.getElementById('firebaseConfigInput').value = saved;
+      document.getElementById('cloudModal').classList.remove('hidden');
+      document.getElementById('cloudModal').classList.add('flex');
+    };
+
+    window.closeCloudModal = () => {
+      document.getElementById('cloudModal').classList.add('hidden');
+      document.getElementById('cloudModal').classList.remove('flex');
+    };
+
+    window.connectFirebase = function() {
+      const rawConfig = document.getElementById('firebaseConfigInput').value.trim();
+      try {
+        const config = JSON.parse(rawConfig);
+        initCloudSync(config);
+        localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(config, null, 2));
+        closeCloudModal();
+      } catch (err) {
+        alert("配置格式错误，请确保输入合法的 JSON 对象: " + err.message);
+      }
+    };
+
+    window.disconnectCloud = function() {
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+      db = null;
+      localStorage.removeItem(FB_CONFIG_KEY);
+      updateSyncUI('local');
+      closeCloudModal();
+    };
+
+    function initCloudSync(config) {
+      try {
+        const app = initializeApp(config);
+        db = getFirestore(app);
+        updateSyncUI('connecting');
+
+        if (unsubscribeSnapshot) unsubscribeSnapshot();
+        unsubscribeSnapshot = onSnapshot(collection(db, "conlang_words"), (snapshot) => {
+          const cloudWords = [];
+          snapshot.forEach(docSnap => cloudWords.push(docSnap.data()));
+          words = cloudWords;
+          saveLocalData();
+          renderDictionary();
+          updateSyncUI('connected');
+        }, (err) => {
+          console.error(err);
+          updateSyncUI('error');
+        });
+      } catch (e) {
+        console.error(e);
+        updateSyncUI('error');
+      }
+    }
+
+    function updateSyncUI(state) {
+      const dot = document.getElementById('syncDot');
+      const text = document.getElementById('syncText');
+      if (state === 'connected') {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        text.textContent = '云端实时同步中';
+      } else if (state === 'connecting') {
+        dot.className = 'w-2 h-2 rounded-full bg-blue-400 animate-ping';
+        text.textContent = '正在连接云端...';
+      } else if (state === 'error') {
+        dot.className = 'w-2 h-2 rounded-full bg-red-500';
+        text.textContent = '云端连接异常';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+        text.textContent = '本地存储模式';
+      }
+    }
+
+    // 导入与导出 JSON
+    window.exportJSON = function() {
+      const blob = new Blob([JSON.stringify(words, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `conlang_dictionary_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+    };
+
+    window.importJSON = function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const imported = JSON.parse(event.target.result);
+          if (Array.isArray(imported)) {
+            words = imported;
+            saveLocalData();
+            renderDictionary();
+            if (db) {
+              for (const item of words) {
+                await setDoc(doc(db, "conlang_words", item.id), item);
+              }
+            }
+            alert(`成功导入 ${imported.length} 个词条！`);
+          }
+        } catch (err) {
+          alert("导入文件解析失败！");
+        }
+      };
+      reader.readAsText(file);
+    };
+
+    function escapeHTML(str) {
+      return String(str || '').replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[m]));
+    }
+
+    // 启动初始化
+    loadLocalData();
+    const savedConfig = localStorage.getItem(FB_CONFIG_KEY);
+    if (savedConfig) {
+      try { initCloudSync(JSON.parse(savedConfig)); } catch (e) {}
+    }
+  </script>
+</body>
+</html>
